@@ -97,7 +97,9 @@ If there is a window displaying a vterm mux buffer, switch to it.
 Otherwise create or find the latest vterm mux buffer and pop up."
   (interactive)
   (if-let ((window (vterm-mux--current-window)))
-      (select-window window)
+      (if (eq (selected-window) (selected-window))
+          (delete-window window)
+        (select-window window))
     (let* ((project-name (funcall vterm-mux-project-find-fn))
            (prefix (format "%s-%s" vterm-mux--prefix project-name))
            (buffers (or (gethash prefix vterm-mux--buffer-table) '())))
