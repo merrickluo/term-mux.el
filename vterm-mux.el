@@ -29,7 +29,7 @@
   "Vterm multiplexer."
   :group 'vterm)
 
-(defcustom vterm-mux-project-find-fn
+(defcustom vterm-mux-project-name-fn
   (cond
    ((fboundp 'projectile-project-root) #'projectile-project-name))
   "The function used to find current project."
@@ -96,15 +96,28 @@ use INDEX if provide."
       (setq-local vterm-mux--buffer-index index)
       buffer)))
 
-(defun vterm-mux--show-buffer (buffer &optional prefix)
+;; TODO: add keyword parameter to determine pop up is needed
+(defun vterm-mux--show-buffer (buffer-or-name &optional prefix)
   "Show the BUFFER in existing window of pop up a new window."
-  (let ((prefix (or prefix (buffer-local-value 'vterm-mux--buffer-prefix buffer))))
-    (puthash prefix buffer vterm-mux--last-visited-table))
+  (let* ((buffer (get-buffer buffer-or-name))
+         (prefix (or prefix (buffer-local-value 'vterm-mux--buffer-prefix buffer))))
+    (puthash prefix buffer vterm-mux--last-visited-table)
+    (if-let ((window (vterm-mux--current-window)))
+        (progn
+          (with-selected-window window
+            (display-buffer buffer 'display-buffer-same-window))
+          (select-window window))
+      (pop-to-buffer buffer))))
 
-  (if-let ((window (vterm-mux--current-window)))
-      (with-selected-window window
-        (display-buffer buffer 'display-buffer-same-window))
-    (pop-to-buffer buffer)))
+(defun vterm-mux--get-prefix ()
+  (or (buffer-local-value 'vterm-mux--buffer-prefix (current-buffer))
+      (let ((project-name (funcall vterm-mux-project-name-fn)))
+        (format "%s-%s" vterm-mux--prefix project-name))))
+
+(defun vterm-mux--list-buffers (&optional prefix)
+  (let ((prefix (or prefix (vterm-mux--get-prefix))))
+    (mapcar #'buffer-name (gethash prefix vterm-mux--buffer-table))))
+
 
 ;;;###autoload
 (defun vterm-mux-toggle ()
@@ -114,14 +127,19 @@ If there is a window displaying a vterm mux buffer, switch to it.
 Otherwise create or find the latest vterm mux buffer and pop up."
   (interactive)
   (if-let ((window (vterm-mux--current-window)))
-      (if (eq (selected-window) (selected-window))
+      (if (eq window (selected-window))
           (delete-window window)
         (select-window window))
-    (let* ((project-name (funcall vterm-mux-project-find-fn))
-           (prefix (format "%s-%s" vterm-mux--prefix project-name))
+    (let* ((prefix (vterm-mux--get-prefix))
            (buffer (or (gethash prefix vterm-mux--last-visited-table)
                        (vterm-mux--new-buffer prefix))))
       (vterm-mux--show-buffer buffer prefix))))
+
+(defun vterm-mux-switch (buffer-or-name)
+  "Switch to specific vterm buffer BUFFER-OR-NAME."
+  (interactive
+   (list (completing-read "Switch to:" (vterm-mux--list-buffers))))
+  (vterm-mux--show-buffer buffer-or-name))
 
 (defun vterm-mux-next (&optional direction)
   "Find or create next vterm mux buffer in DIRECTION."
@@ -144,7 +162,8 @@ Otherwise create or find the latest vterm mux buffer and pop up."
   "Add vterm mux utilities to vterm-mode."
   :lighter "mux"
   :keymap (list (cons (kbd "C-c . n") #'vterm-mux-next)
-                (cons (kbd "C-c . p") #'vterm-mux-prev))
+                (cons (kbd "C-c . p") #'vterm-mux-prev)
+                (cons (kbd "C-c . s") #'vterm-mux-switch))
   (if vterm-mux-mode
       (when (derived-mode-p 'vterm-mode)
         (add-hook 'kill-buffer-hook #'vterm-mux--handle-kill-buffer))
