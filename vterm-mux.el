@@ -123,8 +123,12 @@ Otherwise create or find the latest vterm mux buffer and pop up."
 (define-minor-mode vterm-mux-mode
   "Add vterm mux utilities to vterm-mode."
   :lighter "mux"
-  (when (derived-mode-p 'vterm-mode)
-    (add-hook 'kill-buffer-hook #'vterm-mux--handle-kill-buffer)))
+  :keymap (list (cons (kbd "C-c . n") #'vterm-mux-next)
+                (cons (kbd "C-c . p") #'vterm-mux-prev))
+  (if vterm-mux-mode
+      (when (derived-mode-p 'vterm-mode)
+        (add-hook 'kill-buffer-hook #'vterm-mux--handle-kill-buffer))
+    (remove-hook 'kill-buffer-hook #'vterm-mux--handle-kill-buffer)))
 
 (provide 'vterm-mux)
 ;;; vterm-mux.el ends here
