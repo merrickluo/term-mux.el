@@ -32,7 +32,12 @@
 (defcustom term-mux-project-name-fn
   (cond
    ((fboundp 'projectile-project-root) #'projectile-project-name))
-  "The function used to find current project."
+  "The function used to find current project name."
+  :group 'term-mux
+  :type 'function)
+
+(defcustom term-mux-project-root-fn #'projectile-project-root
+  "The function to find current project root."
   :group 'term-mux
   :type 'function)
 
@@ -91,7 +96,8 @@
   "Create & pop to a new term-mux buffer with PREFIX.
 
 use INDEX if provide."
-  (let* ((index (or index 1))
+  (let* ((default-directory (funcall term-mux-project-root-fn))
+         (index (or index 1))
          (buffer (get-buffer-create (format "%s-%d*" prefix index))))
     (term-mux--add-to-buffer-table prefix buffer)
     (with-current-buffer buffer
