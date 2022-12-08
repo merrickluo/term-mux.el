@@ -92,11 +92,23 @@
              term-mux--buffer-table)
     window))
 
+(defun term-mux--session-name ()
+  (if (projectile-project-p)
+      (projectile-project-name)
+    "global"))
+
+(defun term-mux--session-root ()
+  (if (projectile-project-p)
+      (projectile-project-root)
+    default-directory))
+
+(term-mux--session-name)
+
 (defun term-mux--new-buffer (prefix &optional index)
   "Create & pop to a new term-mux buffer with PREFIX.
 
 use INDEX if provide."
-  (let* ((default-directory (funcall term-mux-project-root-fn))
+  (let* ((default-directory (term-mux--session-root))
          (index (or index 1))
          (buffer (get-buffer-create (format "%s-%d*" prefix index))))
     (term-mux--add-to-buffer-table prefix buffer)
@@ -104,7 +116,7 @@ use INDEX if provide."
       (cond
        ((eq 'vterm term-mux-terminal) (term-mux--vterm-start))
        ((eq 'eshell term-mux-terminal) (term-mux--eshell-start))
-       (t (error "unsupported terminal: %s" term-mux-terminal)))
+       (t (error "Unsupported terminal: %s" term-mux-terminal)))
 
       (setq-local term-mux--buffer-prefix prefix)
       (setq-local term-mux--buffer-index index))
@@ -112,7 +124,7 @@ use INDEX if provide."
 
 ;; TODO: add keyword parameter to determine pop up is needed
 (defun term-mux--show-buffer (buffer-or-name &optional prefix)
-  "Show the BUFFER in existing window of pop up a new window."
+  "Show the BUFFER-OR-NAME in existing window of pop up a new window."
   (let* ((buffer (get-buffer buffer-or-name))
          (prefix (or prefix (buffer-local-value 'term-mux--buffer-prefix buffer))))
     (puthash prefix buffer term-mux--last-visited-table)
@@ -125,8 +137,8 @@ use INDEX if provide."
 
 (defun term-mux--get-prefix ()
   (or (buffer-local-value 'term-mux--buffer-prefix (current-buffer))
-      (let ((project-name (funcall term-mux-project-name-fn)))
-        (format "%s-%s" term-mux--prefix project-name))))
+      (let ((session (term-mux--session-name)))
+        (format "%s-%s" term-mux--prefix session))))
 
 (defun term-mux--list-buffers (&optional prefix)
   (let ((prefix (or prefix (term-mux--get-prefix))))
