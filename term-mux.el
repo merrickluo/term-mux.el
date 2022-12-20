@@ -1,11 +1,11 @@
-;;; term-mux.el --- terminal multiplexer -*- lexical-binding: t; -*-
+;;; term-mux.el --- Terminal multiplexer -*- lexical-binding: t; -*-
 ;;
 ;; Copyright (C) 2022 Merrick Luo
 ;;
 ;; Author: Merrick Luo <merrick@luois.me>
 ;; Maintainer: Merrick Luo <merrick@luois.me>
 ;; Created: November 27, 2022
-;; Modified: November 27, 2022
+;; Modified: December 20, 2022
 ;; Version: 0.0.1
 ;; Keywords: terminals processes
 ;; Homepage: https://github.com/merrickluo/term-mux
@@ -52,6 +52,11 @@
   :group 'term-mux
   :type 'string)
 
+(defcustom term-mux-default-terminal-setup-fn #'term-mux--setup-vterm
+  "The default terminal buffer setup function."
+  :group 'term-mux
+  :type 'function)
+
 
 (defvar term-mux--buffer-table (make-hash-table :test 'equal)
   "Currently opened term buffers grouped by session.")
@@ -62,8 +67,8 @@
 (defvar-local term-mux--buffer-session nil
   "Buffer local variable to store current buffer's session.")
 
-(defvar-local term-mux--buffer-index nil
-  "Buffer local variable to store current buffer's index.")
+(defvar-local term-mux--buffer-slot nil
+  "Buffer local variable to store current buffer's slot.")
 
 
 (defun term-mux--add-to-buffer-table (session buffer)
@@ -78,7 +83,7 @@
 - Remove it from `term-mux--last-visited-table'
 - Switch to other buffer in the same session if exists."
   (when (bound-and-true-p term-mux-mode)
-    (let* ((session (buffer-local-value 'term-mux--buffer-session (current-buffer))))
+    (let* ((session (term-mux--buffer-session)))
       (remhash session term-mux--last-visited-table)
       (when-let ((buffers (gethash session term-mux--buffer-table)))
         (let* ((others (delq (current-buffer) buffers)))
@@ -109,22 +114,16 @@
       (projectile-project-root)
     default-directory))
 
-(defun term-mux--new-buffer (session &optional index)
-  "Create & pop to a new term-mux buffer for SESSION.
-
-use INDEX if provide."
+(defun term-mux--new-buffer (session terminal-setup-fn slot)
   (let* ((default-directory (term-mux--session-root))
-         (index (or index 1))
-         (buffer (get-buffer-create (format "%s-%s-%d*" term-mux-buffer-prefix session index))))
+         (slot (or slot 0))
+         (buffer (get-buffer-create (format "%s-%s-%d*" term-mux-buffer-prefix session slot))))
     (term-mux--add-to-buffer-table session buffer)
     (with-current-buffer buffer
-      (cond
-       ((eq 'vterm term-mux-terminal) (term-mux--vterm-start))
-       ((eq 'eshell term-mux-terminal) (term-mux--eshell-start))
-       (t (error "Unsupported terminal: %s" term-mux-terminal)))
+      (funcall (or terminal-setup-fn term-mux-default-terminal-setup-fn))
 
       (setq-local term-mux--buffer-session session)
-      (setq-local term-mux--buffer-index index))
+      (setq-local term-mux--buffer-slot slot))
     buffer))
 
 ;; TODO: add keyword parameter to determine pop up is needed
@@ -132,7 +131,7 @@ use INDEX if provide."
   "Show the BUFFER-OR-NAME in existing window of pop up a new window.
 Show only buffers in SESSION if given."
   (let* ((buffer (get-buffer buffer-or-name))
-         (session (or session (buffer-local-value 'term-mux--buffer-session buffer))))
+         (session (or session (term-mux--buffer-session buffer))))
     (puthash session buffer term-mux--last-visited-table)
     (if-let ((window (term-mux--current-window)))
         (progn
@@ -142,24 +141,51 @@ Show only buffers in SESSION if given."
       (pop-to-buffer buffer))))
 
 (defun term-mux--current-session ()
-  (or (buffer-local-value 'term-mux--buffer-session (current-buffer))
+  (or (term-mux--buffer-session)
       (term-mux--session-name)))
 
 (defun term-mux--list-buffers (&optional session)
   (let ((session (or session (term-mux--session-name))))
     (mapcar #'buffer-name (gethash session term-mux--buffer-table))))
 
-(defun term-mux--vterm-start ()
+(defun term-mux--setup-vterm ()
   "Setup buffer for vterm."
   (unless (eq major-mode 'vterm-mode)
     (vterm-mode))
   (term-mux-mode))
 
-(defun term-mux--eshell-start ()
+(defun term-mux--setup-eshell ()
   "Setup buffer for eshell."
   (unless (eq major-mode 'eshell-mode)
     (eshell-mode))
   (term-mux-mode))
+
+(defun term-mux--buffer-slot (&optional buffer)
+  (buffer-local-value 'term-mux--buffer-slot (or buffer (current-buffer))))
+
+(defun term-mux--buffer-session (&optional buffer)
+  (buffer-local-value 'term-mux--buffer-session (or buffer (current-buffer))))
+
+(defun term-mux--find-empty-slot (session)
+  "Find a empty slot in SESSION."
+  (let ((buffers (gethash session term-mux--buffer-table))
+        (next-fn (lambda (next-fn buffers slot)
+                   (if (and (car buffers)
+                            (= (term-mux--buffer-slot (car buffers)) slot))
+                       (funcall next-fn next-fn (cdr buffers) (+ slot 1))
+                     slot))))
+    (funcall next-fn next-fn (reverse buffers) 0)))
+
+(defun term-mux--next-buffer (session slot direction)
+  (let ((buffers (gethash session term-mux--buffer-table))
+        (next-fn (lambda (next-fn buffers slot)
+                   (if (and (car buffers) (= (term-mux--buffer-slot (car buffers)) slot))
+                       (cadr buffers)
+                     (funcall next-fn next-fn (cdr buffers) slot)))))
+    (if (< direction 0)
+        (funcall next-fn next-fn buffers slot)
+      (funcall next-fn next-fn (reverse buffers) slot))))
+
 
 ;;;###autoload
 (defun term-mux-toggle ()
@@ -173,11 +199,37 @@ Otherwise create or find the latest term mux buffer and pop up."
           (delete-window window)
         (select-window window))
     (let* ((session (term-mux--current-session))
-           (buffer (or (gethash session term-mux--last-visited-table)
-                       (term-mux--new-buffer session))))
-      (term-mux--show-buffer buffer session))))
+           (buffer (or (gethash session term-mux--last-visited-table))))
+      (if buffer
+          (term-mux--show-buffer buffer session)
+        (term-mux-create term-mux-default-terminal-setup-fn session)))))
 
-(defun term-mux-switch (buffer-or-name)
+;;;###autoload
+(defun term-mux-create (&optional terminal-setup-fn session)
+  "Create a new term mux buffer in SESSION with type SHELL.
+
+SESSION defaults to current project name,
+or session associated with current buffer.
+TERMINAL-SETUP-FN defaults to `term-mux-default-terminal-setup-fn'"
+  (interactive)
+  (let* ((session (or session (term-mux--current-session)))
+         (buffer (term-mux--new-buffer session
+                                       terminal-setup-fn
+                                       (term-mux--find-empty-slot session))))
+    (term-mux--show-buffer buffer session)))
+
+;;;###autoload
+(defun term-mux-create-eshell (&optional session)
+  "Create a eshell buffer and attach it to current term mux SESSION."
+  (interactive)
+  (term-mux-create #'term-mux--setup-eshell session))
+
+(defun term-mux-create-vterm (&optional session)
+  "Create a eshell buffer and attach it to current term mux SESSION."
+  (interactive)
+  (term-mux-create #'term-mux--setup-vterm session))
+
+(defun term-mux-switch-to (buffer-or-name)
   "Switch to specific term buffer BUFFER-OR-NAME."
   (interactive
    (list (completing-read "Switch to:" (term-mux--list-buffers))))
@@ -186,26 +238,36 @@ Otherwise create or find the latest term mux buffer and pop up."
 (defun term-mux-next (&optional direction)
   "Find or create next term mux buffer in DIRECTION."
   (interactive)
-  (let ((session (buffer-local-value 'term-mux--buffer-session (current-buffer)))
-        (index (buffer-local-value 'term-mux--buffer-index (current-buffer))))
-    (if (and session index)
-      (let ((next-index (+ index (or direction 1))))
-        (if (<= next-index 0)
-            (message "already on the first term.")
-          (term-mux--show-buffer (term-mux--new-buffer session next-index) session)))
-      (message "only works in a term-mux buffer."))))
+  (let ((session (term-mux--buffer-session))
+        (slot (term-mux--buffer-slot)))
+    (if (and session slot)
+        (if-let ((buffer (term-mux--next-buffer session slot (or direction 1))))
+            (term-mux--show-buffer buffer)
+          (error "no next term in session"))
+      (error "this function only works in term-mux buffers."))))
 
 (defun term-mux-prev ()
-  "Find or create prev term mux buffer."
+  "Shortcut for `(term-mux-next -1)'"
   (interactive)
   (term-mux-next -1))
+
+(defvar term-mux-command-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map "n" #'term-mux-next)
+    (define-key map "p" #'term-mux-prev)
+    (define-key map "s" #'term-mux-switch-to)
+    (define-key map "c" #'term-mux-create)
+    (define-key map "e" #'term-mux-create-eshell)
+    (define-key map "v" #'term-mux-create-vterm)
+    map))
+
+(fset 'term-mux-command-map term-mux-command-map)
+
 
 (define-minor-mode term-mux-mode
   "Adds term mux utilities."
   :lighter "mux"
-  :keymap (list (cons (kbd "C-c . n") #'term-mux-next)
-                (cons (kbd "C-c . p") #'term-mux-prev)
-                (cons (kbd "C-c . s") #'term-mux-switch))
+  :keymap '()
   (if term-mux-mode
       (add-hook 'kill-buffer-hook #'term-mux--handle-kill-buffer)
     (remove-hook 'kill-buffer-hook #'term-mux--handle-kill-buffer)))
