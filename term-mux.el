@@ -29,24 +29,6 @@
   "Terminal multiplexer."
   :group 'terminals)
 
-(defcustom term-mux-project-name-fn
-  (cond
-   ((fboundp 'projectile-project-root) #'projectile-project-name))
-  "The function used to find current project name."
-  :group 'term-mux
-  :type 'function)
-
-(defcustom term-mux-project-root-fn #'projectile-project-root
-  "The function to find current project root."
-  :group 'term-mux
-  :type 'function)
-
-(defcustom term-mux-terminal 'vterm
-  "The implemention used to create terminal buffer."
-  :group 'term-mux
-  :type 'symbol
-  :options '(vterm eshell))
-
 (defcustom term-mux-buffer-prefix "*term-mux-"
   "The buffer prefix for term mux buffers."
   :group 'term-mux
@@ -74,7 +56,9 @@
 (defun term-mux--add-to-buffer-table (session buffer)
   "Add new BUFFER to the buffer list under SESSION key."
   (if-let ((buffers (gethash session term-mux--buffer-table)))
-      (puthash session (cl-pushnew buffer buffers) term-mux--buffer-table)
+      (let ((new-buffers (cl-pushnew buffer buffers)))
+        (cl-sort new-buffers #'< :key #'term-mux--buffer-slot)
+        (puthash session new-buffers term-mux--buffer-table))
     (puthash session (list buffer) term-mux--buffer-table)))
 
 (defun term-mux--handle-kill-buffer ()
@@ -118,12 +102,12 @@
   (let* ((default-directory (term-mux--session-root))
          (slot (or slot 0))
          (buffer (get-buffer-create (format "%s-%s-%d*" term-mux-buffer-prefix session slot))))
-    (term-mux--add-to-buffer-table session buffer)
     (with-current-buffer buffer
       (funcall (or terminal-setup-fn term-mux-default-terminal-setup-fn))
 
       (setq-local term-mux--buffer-session session)
-      (setq-local term-mux--buffer-slot slot))
+      (setq-local term-mux--buffer-slot slot)
+      (term-mux--add-to-buffer-table session buffer))
     buffer))
 
 ;; TODO: add keyword parameter to determine pop up is needed
@@ -174,7 +158,7 @@ Show only buffers in SESSION if given."
                             (= (term-mux--buffer-slot (car buffers)) slot))
                        (funcall next-fn next-fn (cdr buffers) (+ slot 1))
                      slot))))
-    (funcall next-fn next-fn (reverse buffers) 0)))
+    (funcall next-fn next-fn buffers 0)))
 
 (defun term-mux--next-buffer (session slot direction)
   (let ((buffers (gethash session term-mux--buffer-table))
@@ -183,8 +167,8 @@ Show only buffers in SESSION if given."
                        (cadr buffers)
                      (funcall next-fn next-fn (cdr buffers) slot)))))
     (if (< direction 0)
-        (funcall next-fn next-fn buffers slot)
-      (funcall next-fn next-fn (reverse buffers) slot))))
+        (funcall next-fn next-fn (reverse buffers) slot)
+      (funcall next-fn next-fn buffers slot))))
 
 
 ;;;###autoload
