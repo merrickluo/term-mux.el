@@ -43,6 +43,12 @@
 (defvar term-mux--buffer-table (make-hash-table :test 'equal)
   "Currently opened term buffers grouped by session.")
 
+(defvar-local term-mux-session-name nil
+  "Can be used to customize session name.")
+
+(defvar-local term-mux-session-root nil
+  "Can be used to customize session root.")
+
 (defvar-local term-mux--last-visited-table (make-hash-table :test 'equal)
   "Last visited term buffer grouped by session.")
 
@@ -86,17 +92,17 @@
              term-mux--buffer-table)
     window))
 
-;; TODO: make it customizable
 (defun term-mux--session-name ()
-  (if (projectile-project-p)
-      (projectile-project-name)
-    "global"))
+  (or term-mux-session-name
+      (if (projectile-project-p)
+          (projectile-project-name)
+        "global")))
 
-;; TODO: make it customizable
 (defun term-mux--session-root ()
-  (if (projectile-project-p)
-      (projectile-project-root)
-    default-directory))
+  (or term-mux-session-root
+      (if (projectile-project-p)
+          (projectile-project-root)
+        default-directory)))
 
 (defun term-mux--new-buffer (session terminal-setup-fn slot)
   (let* ((default-directory (term-mux--session-root))
