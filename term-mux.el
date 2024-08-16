@@ -209,6 +209,21 @@ TERMINAL-SETUP-FN defaults to `term-mux-default-terminal-setup-fn'"
     (term-mux--show-buffer buffer session)))
 
 ;;;###autoload
+(defun term-mux-buffer (&optional terminal-setup-fn session)
+  "Create a new term mux buffer in SESSION with type SHELL.
+
+SESSION defaults to current project name,
+or session associated with current buffer.
+TERMINAL-SETUP-FN defaults to `term-mux-default-terminal-setup-fn'.
+
+Return the created buffer."
+  (interactive)
+  (let* ((session (or session (term-mux--current-session))))
+    (term-mux--new-buffer session
+                          terminal-setup-fn
+                          (term-mux--find-empty-slot session))))
+
+;;;###autoload
 (defun term-mux-create-eshell (&optional session)
   "Create a eshell buffer and attach it to current term mux SESSION."
   (interactive)
