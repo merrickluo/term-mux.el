@@ -43,10 +43,10 @@
 (defvar term-mux--buffer-table (make-hash-table :test 'equal)
   "Currently opened term buffers grouped by session.")
 
-(defvar-local term-mux-session-name nil
+(defvar term-mux-session-name nil
   "Can be used to customize session name.")
 
-(defvar-local term-mux-session-root nil
+(defvar term-mux-session-root nil
   "Can be used to customize session root.")
 
 (defvar-local term-mux--last-visited-table (make-hash-table :test 'equal)
