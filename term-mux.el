@@ -62,9 +62,8 @@
 (defun term-mux--add-to-buffer-table (session buffer)
   "Add new BUFFER to the buffer list under SESSION key."
   (if-let ((buffers (gethash session term-mux--buffer-table)))
-      (let* ((new-buffers (cl-pushnew buffer buffers))
-             (sorted-buffers (cl-sort new-buffers #'< :key #'term-mux--buffer-slot)))
-        (puthash session sorted-buffers term-mux--buffer-table))
+      (let ((new-buffers (cl-pushnew buffer buffers)))
+        (puthash session new-buffers term-mux--buffer-table))
     (puthash session (list buffer) term-mux--buffer-table)))
 
 (defun term-mux--handle-kill-buffer ()
@@ -159,13 +158,14 @@ Show only buffers in SESSION if given."
 
 (defun term-mux--find-empty-slot (session)
   "Find a empty slot in SESSION."
-  (let ((buffers (gethash session term-mux--buffer-table))
-        (next-fn (lambda (next-fn buffers slot)
-                   (if (and (car buffers)
-                            (= (term-mux--buffer-slot (car buffers)) slot))
-                       (funcall next-fn next-fn (cdr buffers) (+ slot 1))
-                     slot))))
-    (funcall next-fn next-fn buffers 0)))
+  (let* ((buffers (gethash session term-mux--buffer-table))
+         (sorted-buffers (sort buffers :key #'term-mux--buffer-slot))
+         (next-fn (lambda (next-fn buffers slot)
+                    (if (and (car buffers)
+                             (= (term-mux--buffer-slot (car buffers)) slot))
+                        (funcall next-fn next-fn (cdr buffers) (+ slot 1))
+                      slot))))
+    (funcall next-fn next-fn sorted-buffers 0)))
 
 (defun term-mux--next-buffer (session slot direction)
   (let ((buffers (gethash session term-mux--buffer-table))
