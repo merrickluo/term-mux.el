@@ -136,7 +136,7 @@ Show only buffers in SESSION if given."
       (term-mux--session-name)))
 
 (defun term-mux--list-buffers (&optional session)
-  (let ((session (or session (term-mux--session-name))))
+  (let ((session (or session (term-mux--current-session))))
     (mapcar #'buffer-name (gethash session term-mux--buffer-table))))
 
 (defun term-mux--setup-vterm ()
