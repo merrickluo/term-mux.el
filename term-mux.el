@@ -62,9 +62,9 @@
 (defun term-mux--add-to-buffer-table (session buffer)
   "Add new BUFFER to the buffer list under SESSION key."
   (if-let ((buffers (gethash session term-mux--buffer-table)))
-      (let ((new-buffers (cl-pushnew buffer buffers)))
-        (cl-sort new-buffers #'< :key #'term-mux--buffer-slot)
-        (puthash session new-buffers term-mux--buffer-table))
+      (let* ((new-buffers (cl-pushnew buffer buffers))
+             (sorted-buffers (cl-sort new-buffers #'< :key #'term-mux--buffer-slot)))
+        (puthash session sorted-buffers term-mux--buffer-table))
     (puthash session (list buffer) term-mux--buffer-table)))
 
 (defun term-mux--handle-kill-buffer ()
