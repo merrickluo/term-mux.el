@@ -190,7 +190,7 @@ Otherwise create or find the latest term mux buffer and pop up."
           (delete-window window)
         (select-window window))
     (let* ((session (term-mux--current-session))
-           (buffer (or (gethash session term-mux--last-visited-table))))
+           (buffer (gethash session term-mux--last-visited-table)))
       (if buffer
           (term-mux--show-buffer buffer session)
         (term-mux-create term-mux-default-terminal-setup-fn session)))))
