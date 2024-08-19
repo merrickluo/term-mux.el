@@ -73,13 +73,14 @@
 - Remove it from `term-mux--last-visited-table'
 - Switch to other buffer in the same session if exists."
   (when (bound-and-true-p term-mux-mode)
-    (let* ((session (term-mux--buffer-session)))
+    (let ((window (get-buffer-window))
+          (session (term-mux--buffer-session)))
       (remhash session term-mux--last-visited-table)
       (when-let ((buffers (gethash session term-mux--buffer-table)))
         (let* ((others (delq (current-buffer) buffers)))
           (puthash session others term-mux--buffer-table)
           (if others
-              (term-mux--show-buffer (car others))))))))
+              (term-mux--show-buffer (car others) session window)))))))
 
 (defun term-mux--current-window ()
   "Find the window currently displaying the term mux buffer."
@@ -117,16 +118,16 @@
     buffer))
 
 ;; TODO: add keyword parameter to determine pop up is needed
-(defun term-mux--show-buffer (buffer-or-name &optional session)
-  "Show the BUFFER-OR-NAME in existing window of pop up a new window.
+(defun term-mux--show-buffer (buffer-or-name &optional session window)
+  "Show the BUFFER-OR-NAME in existing WINDOW of pop up a new window.
 Show only buffers in SESSION if given."
   (let* ((buffer (get-buffer buffer-or-name))
          (session (or session (term-mux--buffer-session buffer))))
     (puthash session buffer term-mux--last-visited-table)
-    (if-let ((window (term-mux--current-window)))
+    (if-let ((window (or window (term-mux--current-window))))
         (progn
           (with-selected-window window
-            (display-buffer buffer 'display-buffer-same-window))
+            (switch-to-buffer buffer t t))
           (select-window window))
       (pop-to-buffer buffer))))
 
@@ -255,6 +256,14 @@ Return the created buffer."
   "Shortcut for `(term-mux-next -1)'"
   (interactive)
   (term-mux-next -1))
+
+(defun term-mux-session-empty-p (&optional session)
+  "Check if SESSION is empty.
+
+If SESSION is nil, check current session."
+  (let* ((session (or session (term-mux--current-session)))
+         (buffers (gethash session term-mux--buffer-table)))
+    (not buffers)))
 
 (defvar term-mux-command-map
   (let ((map (make-sparse-keymap)))
