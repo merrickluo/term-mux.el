@@ -44,11 +44,15 @@
 
 (defun term-mux-frame--exit-fn (&optional buffer _event)
   "Hook to run after a vterm BUFFER killed for term-mux frame.
-
 Delete the frame if it's the last buffer in session."
   (let* ((buffer (or buffer (current-buffer)))
          (frame (window-frame (get-buffer-window buffer)))
          (session (term-mux--buffer-session buffer)))
+    ;; vterm requires us to kill the buffer
+    (with-current-buffer buffer
+      (when (provided-mode-derived-p major-mode 'vterm-mode)
+        (kill-buffer buffer)))
+
     (when (and (frame-parameter frame 'term-mux-frame)
                (term-mux-session-empty-p session))
       (delete-frame frame))))
