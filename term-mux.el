@@ -22,7 +22,7 @@
 (require 'projectile nil)
 (require 'project nil)
 (require 'subr-x)
-(require 'vterm)
+(require 'vterm nil)
 
 
 (defgroup term-mux nil
