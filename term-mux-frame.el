@@ -35,11 +35,17 @@
   :group 'term-mux-frame
   :type 'function)
 
+(defcustom term-mux-frame-name "Terminal"
+  "Name for the new term mux frames."
+  :group 'term-mux-frame
+  :type 'string)
+
 ;;;###autoload
 (defun term-mux-frame()
   "Setup term-mux in selected frame, assuming it's called from emacsclient."
   (let ((term-mux-session-name (funcall term-mux-frame-session-name-fn)))
     (set-frame-parameter (selected-frame) 'term-mux-frame t)
+    (set-frame-name term-mux-frame-name)
     (switch-to-buffer (term-mux-buffer))))
 
 (defun term-mux-frame--exit-fn (&optional buffer _event)
