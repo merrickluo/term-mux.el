@@ -19,13 +19,11 @@
 ;;
 ;;; Code:
 
-(require 'cl-lib)
-(require 'projectile)
-(require 'project)
 (require 'subr-x)
-(require 'vterm)
-(require 'seq)
 
+;; Make dependencies optional
+(require 'projectile nil t)
+(require 'vterm nil t)
 
 (defgroup term-mux nil
   "Terminal multiplexer."
@@ -99,7 +97,7 @@
   (let ((window nil))
     (maphash (lambda (_session buffers)
                (mapcar (lambda (buffer)
-                         (if-let* ((win (get-buffer-window buffer)))
+                         (when-let* ((win (get-buffer-window buffer)))
                              (setq window win)))
                        buffers))
              term-mux--buffer-table)
@@ -107,13 +105,15 @@
 
 (defun term-mux--session-name ()
   (or term-mux-session-name
-      (if (projectile-project-p)
+      (if (and (featurep 'projectile)
+               (projectile-project-p))
           (projectile-project-name)
         "global")))
 
 (defun term-mux--session-root ()
   (or term-mux-session-root
-      (if (projectile-project-p)
+      (if (and (featurep 'projectile)
+               (projectile-project-p))
           (projectile-project-root)
         default-directory)))
 
@@ -153,6 +153,8 @@ Show only buffers in SESSION if given."
 
 (defun term-mux--setup-vterm ()
   "Setup buffer for vterm."
+  (unless (featurep 'vterm)
+    (error "Vterm is not available"))
   (unless (eq major-mode 'vterm-mode)
     (vterm-mode))
   (term-mux-mode))
@@ -184,6 +186,8 @@ Show only buffers in SESSION if given."
     slot))
 
 (defun term-mux--next-buffer (session slot direction)
+  "Find the next buffer in SESSION from SLOT in DIRECTION.
+DIRECTION should be 1 for forward, -1 for backward."
   (let* ((buffers (gethash session term-mux--buffer-table))
          (sorted-buffers (sort (copy-sequence buffers)
                                (lambda (a b)
@@ -211,7 +215,7 @@ Otherwise create or find the latest term mux buffer and pop up."
         (select-window window))
     (let* ((session (term-mux--current-session))
            (buffer (gethash session term-mux--last-visited-table)))
-      (if buffer
+      (if-let* ((buffer (and buffer (buffer-live-p buffer))))
           (term-mux--show-buffer buffer session)
         (term-mux-create term-mux-default-terminal-setup-fn session)))))
 
