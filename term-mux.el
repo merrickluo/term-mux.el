@@ -5,11 +5,11 @@
 ;; Author: Merrick Luo <merrick@luois.me>
 ;; Maintainer: Merrick Luo <merrick@luois.me>
 ;; Created: November 27, 2022
-;; Modified: December 20, 2022
-;; Version: 0.0.1
+;; Modified: February 11, 2026
+;; Version: 0.0.2
 ;; Keywords: terminals processes
 ;; Homepage: https://github.com/merrickluo/term-mux
-;; Package-Requires: ((emacs "25.1"))
+;; Package-Requires: ((emacs "25.1") (projectile "2.0.0") (vterm "0.0.1"))
 ;;
 ;; This file is not part of GNU Emacs.
 ;;
@@ -19,10 +19,12 @@
 ;;
 ;;; Code:
 
-(require 'projectile nil)
-(require 'project nil)
+(require 'cl-lib)
+(require 'projectile)
+(require 'project)
 (require 'subr-x)
-(require 'vterm nil)
+(require 'vterm)
+(require 'seq)
 
 
 (defgroup term-mux nil
@@ -49,7 +51,7 @@
 (defvar term-mux-session-root nil
   "Can be used to customize session root.")
 
-(defvar-local term-mux--last-visited-table (make-hash-table :test 'equal)
+(defvar term-mux--last-visited-table (make-hash-table :test 'equal)
   "Last visited term buffer grouped by session.")
 
 (defvar-local term-mux--buffer-session nil
@@ -61,7 +63,7 @@
 
 (defun term-mux--add-to-buffer-table (session buffer)
   "Add new BUFFER to the buffer list under SESSION key."
-  (if-let ((buffers (gethash session term-mux--buffer-table)))
+  (if-let* ((buffers (gethash session term-mux--buffer-table)))
       (let ((new-buffers (cl-pushnew buffer buffers)))
         (puthash session new-buffers term-mux--buffer-table))
     (puthash session (list buffer) term-mux--buffer-table)))
@@ -72,21 +74,32 @@
 - Remove it from `term-mux--last-visited-table'
 - Switch to other buffer in the same session if exists."
   (when (bound-and-true-p term-mux-mode)
-    (let ((window (get-buffer-window))
-          (session (term-mux--buffer-session)))
-      (remhash session term-mux--last-visited-table)
-      (when-let ((buffers (gethash session term-mux--buffer-table)))
-        (let* ((others (delq (current-buffer) buffers)))
-          (puthash session others term-mux--buffer-table)
-          (if others
-              (term-mux--show-buffer (car others) session window)))))))
+    (let* ((buffer (current-buffer))
+           (window (get-buffer-window buffer))
+           (session (term-mux--buffer-session buffer)))
+      (when session
+        ;; Handle last-visited-table
+        (let ((last-visited (gethash session term-mux--last-visited-table)))
+          (when (eq last-visited buffer)
+            (remhash session term-mux--last-visited-table)))
+
+        (when-let* ((buffers (gethash session term-mux--buffer-table)))
+          (let* ((others (delq buffer buffers)))
+            (puthash session others term-mux--buffer-table)
+
+            ;; If we removed the last visited, update it to something else if available
+            (when (and others (not (gethash session term-mux--last-visited-table)))
+              (puthash session (car others) term-mux--last-visited-table))
+
+            (when (and window others)
+              (term-mux--show-buffer (car others) session window))))))))
 
 (defun term-mux--current-window ()
   "Find the window currently displaying the term mux buffer."
   (let ((window nil))
     (maphash (lambda (_session buffers)
                (mapcar (lambda (buffer)
-                         (if-let ((win (get-buffer-window buffer)))
+                         (if-let* ((win (get-buffer-window buffer)))
                              (setq window win)))
                        buffers))
              term-mux--buffer-table)
@@ -123,7 +136,7 @@ Show only buffers in SESSION if given."
   (let* ((buffer (get-buffer buffer-or-name))
          (session (or session (term-mux--buffer-session buffer))))
     (puthash session buffer term-mux--last-visited-table)
-    (if-let ((window (or window (term-mux--current-window))))
+    (if-let* ((window (or window (term-mux--current-window))))
         (progn
           (with-selected-window window
             (switch-to-buffer buffer t t))
@@ -159,23 +172,30 @@ Show only buffers in SESSION if given."
 (defun term-mux--find-empty-slot (session)
   "Find a empty slot in SESSION."
   (let* ((buffers (gethash session term-mux--buffer-table))
-         (sorted-buffers (sort buffers :key #'term-mux--buffer-slot))
-         (next-fn (lambda (next-fn buffers slot)
-                    (if (and (car buffers)
-                             (= (term-mux--buffer-slot (car buffers)) slot))
-                        (funcall next-fn next-fn (cdr buffers) (+ slot 1))
-                      slot))))
-    (funcall next-fn next-fn sorted-buffers 0)))
+         (sorted-buffers (sort (copy-sequence buffers)
+                               (lambda (a b)
+                                 (< (term-mux--buffer-slot a)
+                                    (term-mux--buffer-slot b)))))
+         (slot 0))
+    (while (and sorted-buffers
+                (= (term-mux--buffer-slot (car sorted-buffers)) slot))
+      (setq sorted-buffers (cdr sorted-buffers))
+      (setq slot (1+ slot)))
+    slot))
 
 (defun term-mux--next-buffer (session slot direction)
-  (let ((buffers (gethash session term-mux--buffer-table))
-        (next-fn (lambda (next-fn buffers slot)
-                   (if (and (car buffers) (= (term-mux--buffer-slot (car buffers)) slot))
-                       (cadr buffers)
-                     (funcall next-fn next-fn (cdr buffers) slot)))))
-    (if (< direction 0)
-        (funcall next-fn next-fn (reverse buffers) slot)
-      (funcall next-fn next-fn buffers slot))))
+  (let* ((buffers (gethash session term-mux--buffer-table))
+         (sorted-buffers (sort (copy-sequence buffers)
+                               (lambda (a b)
+                                 (< (term-mux--buffer-slot a)
+                                    (term-mux--buffer-slot b)))))
+         (len (length sorted-buffers)))
+    (when (> len 0)
+      (let* ((current-idx (seq-position sorted-buffers slot
+                                        (lambda (buf s)
+                                          (= (term-mux--buffer-slot buf) s))))
+             (next-idx (mod (+ (or current-idx 0) direction) len)))
+        (nth next-idx sorted-buffers)))))
 
 
 ;;;###autoload
@@ -185,7 +205,7 @@ Show only buffers in SESSION if given."
 If there is a window displaying a term mux buffer, switch to it.
 Otherwise create or find the latest term mux buffer and pop up."
   (interactive)
-  (if-let ((window (term-mux--current-window)))
+  (if-let* ((window (term-mux--current-window)))
       (if (eq window (selected-window))
           (delete-window window)
         (select-window window))
@@ -197,7 +217,7 @@ Otherwise create or find the latest term mux buffer and pop up."
 
 ;;;###autoload
 (defun term-mux-create (&optional terminal-setup-fn session)
-  "Create a new term mux buffer in SESSION with type SHELL.
+  "Create a new term mux buffer in SESSION.
 
 SESSION defaults to current project name,
 or session associated with current buffer.
@@ -211,7 +231,7 @@ TERMINAL-SETUP-FN defaults to `term-mux-default-terminal-setup-fn'"
 
 ;;;###autoload
 (defun term-mux-buffer (&optional terminal-setup-fn session)
-  "Create a new term mux buffer in SESSION with type SHELL.
+  "Create a new term mux buffer in SESSION.
 
 SESSION defaults to current project name,
 or session associated with current buffer.
@@ -247,7 +267,7 @@ Return the created buffer."
   (let ((session (term-mux--buffer-session))
         (slot (term-mux--buffer-slot)))
     (if (and session slot)
-        (if-let ((buffer (term-mux--next-buffer session slot (or direction 1))))
+        (if-let* ((buffer (term-mux--next-buffer session slot (or direction 1))))
             (term-mux--show-buffer buffer)
           (error "no next term in session"))
       (error "this function only works in term-mux buffers."))))
@@ -280,11 +300,11 @@ If SESSION is nil, check current session."
 
 (define-minor-mode term-mux-mode
   "Adds term mux utilities."
-  :lighter "mux"
+  :lighter " mux"
   :keymap '()
   (if term-mux-mode
-      (add-hook 'kill-buffer-hook #'term-mux--handle-kill-buffer)
-    (remove-hook 'kill-buffer-hook #'term-mux--handle-kill-buffer)))
+      (add-hook 'kill-buffer-hook #'term-mux--handle-kill-buffer nil t)
+    (remove-hook 'kill-buffer-hook #'term-mux--handle-kill-buffer t)))
 
 (provide 'term-mux)
 ;;; term-mux.el ends here

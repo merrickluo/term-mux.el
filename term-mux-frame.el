@@ -5,11 +5,11 @@
 ;; Author: Merrick Luo <merrick@luois.me>
 ;; Maintainer: Merrick Luo <merrick@luois.me>
 ;; Created: August 19, 2024
-;; Modified: August 19, 2024
-;; Version: 0.0.1
+;; Modified: February 11, 2026
+;; Version: 0.0.2
 ;; Keywords: terminals processes
 ;; Homepage: https://github.com/merrickluo/term-mux
-;; Package-Requires: ((emacs "24.3") (term-mux "0.0.1") (uuid "0.0.3"))
+;; Package-Requires: ((emacs "24.3") (term-mux "0.0.2") (uuid "0.0.3"))
 ;;
 ;; This file is not part of GNU Emacs.
 ;;
@@ -52,13 +52,14 @@
   "Hook to run after a vterm BUFFER killed for term-mux frame.
 Delete the frame if it's the last buffer in session."
   (let* ((buffer (or buffer (current-buffer)))
-         (frame (window-frame (get-buffer-window buffer)))
+         (window (get-buffer-window buffer))
+         (frame (if window (window-frame window) nil))
          (session (term-mux--buffer-session buffer)))
 
-    (when (frame-parameter frame 'term-mux-frame)
+    (when (and frame (frame-parameter frame 'term-mux-frame))
       ;; vterm requires us to kill the buffer
       (with-current-buffer buffer
-        (when (provided-mode-derived-p major-mode 'vterm-mode)
+        (when (derived-mode-p 'vterm-mode)
           (kill-buffer buffer)))
 
       (when (term-mux-session-empty-p session)
