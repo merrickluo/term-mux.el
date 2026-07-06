@@ -195,7 +195,9 @@ Tries ghostel, vterm, then falls back to eshell."
   (unless (featurep 'ghostel)
     (error "Ghostel is not available"))
   (unless (eq major-mode 'ghostel-mode)
-    (ghostel-mode))
+    (ghostel-mode)
+    (ghostel--init-buffer (current-buffer))
+    (ghostel--start-process))
   (term-mux-mode))
 
 (defun term-mux--buffer-slot (&optional buffer)

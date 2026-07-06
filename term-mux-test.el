@@ -153,6 +153,8 @@
   ;; Ghostel takes priority
   (cl-letf (((symbol-function 'featurep) (lambda (feature) (eq feature 'ghostel)))
             ((symbol-function 'ghostel-mode) (lambda (&rest _) (setq major-mode 'ghostel-mode)))
+            ((symbol-function 'ghostel--init-buffer) (lambda (_ &rest __) nil))
+            ((symbol-function 'ghostel--start-process) (lambda () nil))
             (term-mux-mode nil))
     (with-temp-buffer
       (term-mux--detect-terminal)
@@ -178,9 +180,11 @@
   (cl-letf (((symbol-function 'featurep) (lambda (_) nil)))
     (with-temp-buffer
       (should-error (term-mux--setup-ghostel))))
-  ;; Activates ghostel-mode when available
+  ;; Activates ghostel-mode and initializes when available
   (cl-letf (((symbol-function 'featurep) (lambda (_) t))
             ((symbol-function 'ghostel-mode) (lambda (&rest _) (setq major-mode 'ghostel-mode)))
+            ((symbol-function 'ghostel--init-buffer) (lambda (_ &rest __) nil))
+            ((symbol-function 'ghostel--start-process) (lambda () nil))
             (term-mux-mode nil))
     (with-temp-buffer
       (term-mux--setup-ghostel)
