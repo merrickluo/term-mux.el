@@ -139,5 +139,57 @@
         (kill-buffer buffer-1)
         (kill-buffer buffer-2)))))
 
+(ert-deftest term-mux-test-detect-terminal ()
+  "Test terminal backend auto-detection priority."
+  ;; Ghostel takes priority
+  (cl-letf (((symbol-function 'featurep) (lambda (feature) (eq feature 'ghostel)))
+            ((symbol-function 'ghostel-mode) (lambda (&rest _) (setq major-mode 'ghostel-mode)))
+            (term-mux-mode nil))
+    (with-temp-buffer
+      (term-mux--detect-terminal)
+      (should (eq major-mode 'ghostel-mode))))
+  ;; Falls back to vterm when ghostel missing
+  (cl-letf (((symbol-function 'featurep) (lambda (feature) (eq feature 'vterm)))
+            ((symbol-function 'vterm-mode) (lambda (&rest _) (setq major-mode 'vterm-mode)))
+            (term-mux-mode nil))
+    (with-temp-buffer
+      (term-mux--detect-terminal)
+      (should (eq major-mode 'vterm-mode))))
+  ;; Falls back to eshell when nothing else available
+  (cl-letf (((symbol-function 'featurep) (lambda (_) nil))
+            ((symbol-function 'eshell-mode) (lambda (&rest _) (setq major-mode 'eshell-mode)))
+            (term-mux-mode nil))
+    (with-temp-buffer
+      (term-mux--detect-terminal)
+      (should (eq major-mode 'eshell-mode)))))
+
+(ert-deftest term-mux-test-setup-ghostel ()
+  "Test ghostel setup function."
+  ;; Error when ghostel not available
+  (cl-letf (((symbol-function 'featurep) (lambda (_) nil)))
+    (with-temp-buffer
+      (should-error (term-mux--setup-ghostel))))
+  ;; Activates ghostel-mode when available
+  (cl-letf (((symbol-function 'featurep) (lambda (_) t))
+            ((symbol-function 'ghostel-mode) (lambda (&rest _) (setq major-mode 'ghostel-mode)))
+            (term-mux-mode nil))
+    (with-temp-buffer
+      (term-mux--setup-ghostel)
+      (should (eq major-mode 'ghostel-mode)))))
+
+(ert-deftest term-mux-test-setup-vterm ()
+  "Test vterm setup function."
+  ;; Error when vterm not available
+  (cl-letf (((symbol-function 'featurep) (lambda (_) nil)))
+    (with-temp-buffer
+      (should-error (term-mux--setup-vterm))))
+  ;; Activates vterm-mode when available
+  (cl-letf (((symbol-function 'featurep) (lambda (_) t))
+            ((symbol-function 'vterm-mode) (lambda (&rest _) (setq major-mode 'vterm-mode)))
+            (term-mux-mode nil))
+    (with-temp-buffer
+      (term-mux--setup-vterm)
+      (should (eq major-mode 'vterm-mode)))))
+
 (provide 'term-mux-test)
 ;;; term-mux-test.el ends here

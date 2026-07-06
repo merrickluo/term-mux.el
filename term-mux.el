@@ -9,7 +9,7 @@
 ;; Version: 0.0.2
 ;; Keywords: terminals processes
 ;; Homepage: https://github.com/merrickluo/term-mux
-;; Package-Requires: ((emacs "25.1") (projectile "2.0.0") (vterm "0.0.1"))
+;; Package-Requires: ((emacs "25.1") (projectile "2.0.0"))
 ;;
 ;; This file is not part of GNU Emacs.
 ;;
@@ -21,9 +21,10 @@
 
 (require 'subr-x)
 
-;; Make dependencies optional
+;; Terminal backends (all optional — at least one is needed)
 (require 'projectile nil t)
 (require 'vterm nil t)
+(require 'ghostel nil t)
 
 (defgroup term-mux nil
   "Terminal multiplexer."
@@ -34,8 +35,14 @@
   :group 'term-mux
   :type 'string)
 
-(defcustom term-mux-default-terminal-setup-fn #'term-mux--setup-vterm
-  "The default terminal buffer setup function."
+(defcustom term-mux-default-terminal-setup-fn #'term-mux--detect-terminal
+  "The default terminal buffer setup function.
+
+Supported options:
+- `term-mux--setup-ghostel' (requires ghostel)
+- `term-mux--setup-vterm'   (requires vterm)
+- `term-mux--setup-eshell'  (built-in)
+- `term-mux--detect-terminal' (auto-detect first available)"
   :group 'term-mux
   :type 'function)
 
@@ -151,6 +158,13 @@ Show only buffers in SESSION if given."
   (let ((session (or session (term-mux--current-session))))
     (mapcar #'buffer-name (gethash session term-mux--buffer-table))))
 
+(defun term-mux--detect-terminal ()
+  "Setup the first available terminal backend.
+Tries ghostel, vterm, then falls back to eshell."
+  (cond ((featurep 'ghostel) (term-mux--setup-ghostel))
+        ((featurep 'vterm) (term-mux--setup-vterm))
+        (t (term-mux--setup-eshell))))
+
 (defun term-mux--setup-vterm ()
   "Setup buffer for vterm."
   (unless (featurep 'vterm)
@@ -163,6 +177,14 @@ Show only buffers in SESSION if given."
   "Setup buffer for eshell."
   (unless (eq major-mode 'eshell-mode)
     (eshell-mode))
+  (term-mux-mode))
+
+(defun term-mux--setup-ghostel ()
+  "Setup buffer for ghostel."
+  (unless (featurep 'ghostel)
+    (error "Ghostel is not available"))
+  (unless (eq major-mode 'ghostel-mode)
+    (ghostel-mode))
   (term-mux-mode))
 
 (defun term-mux--buffer-slot (&optional buffer)
@@ -255,9 +277,15 @@ Return the created buffer."
   (term-mux-create #'term-mux--setup-eshell session))
 
 (defun term-mux-create-vterm (&optional session)
-  "Create a eshell buffer and attach it to current term mux SESSION."
+  "Create a vterm buffer and attach it to current term mux SESSION."
   (interactive)
   (term-mux-create #'term-mux--setup-vterm session))
+
+;;;###autoload
+(defun term-mux-create-ghostel (&optional session)
+  "Create a ghostel buffer and attach it to current term mux SESSION."
+  (interactive)
+  (term-mux-create #'term-mux--setup-ghostel session))
 
 (defun term-mux-switch-to (buffer-or-name)
   "Switch to specific term buffer BUFFER-OR-NAME."
@@ -296,6 +324,7 @@ If SESSION is nil, check current session."
     (define-key map "s" #'term-mux-switch-to)
     (define-key map "c" #'term-mux-create)
     (define-key map "e" #'term-mux-create-eshell)
+    (define-key map "g" #'term-mux-create-ghostel)
     (define-key map "v" #'term-mux-create-vterm)
     map))
 
