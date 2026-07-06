@@ -68,9 +68,12 @@ Delete the frame if it's the last buffer in session."
       (when (term-mux-session-empty-p session)
         (delete-frame frame)))))
 
-(add-hook 'vterm-exit-functions #'term-mux-frame--exit-fn)
-(add-hook 'ghostel-exit-functions #'term-mux-frame--exit-fn)
-(add-hook 'eshell-exit-hook #'term-mux-frame--exit-fn)
+(with-eval-after-load 'vterm
+  (add-hook 'vterm-exit-functions #'term-mux-frame--exit-fn))
+(with-eval-after-load 'ghostel
+  (add-hook 'ghostel-exit-functions #'term-mux-frame--exit-fn))
+(with-eval-after-load 'eshell
+  (add-hook 'eshell-exit-hook #'term-mux-frame--exit-fn))
 
 (provide 'term-mux-frame)
 ;;; term-mux-frame.el ends here
