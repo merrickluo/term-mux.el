@@ -24,7 +24,8 @@
 
 (require 'term-mux)
 (require 'uuid)
-(require 'vterm nil)
+(require 'vterm nil t)
+(require 'ghostel nil t)
 
 (defgroup term-mux-frame nil
   "Terminal multiplexer for Frame."
@@ -49,7 +50,7 @@
     (switch-to-buffer (term-mux-buffer))))
 
 (defun term-mux-frame--exit-fn (&optional buffer _event)
-  "Hook to run after a vterm BUFFER killed for term-mux frame.
+  "Hook to run after a terminal BUFFER process exits for term-mux frame.
 Delete the frame if it's the last buffer in session."
   (let* ((buffer (or buffer (current-buffer)))
          (window (get-buffer-window buffer))
@@ -57,15 +58,18 @@ Delete the frame if it's the last buffer in session."
          (session (term-mux--buffer-session buffer)))
 
     (when (and frame (frame-parameter frame 'term-mux-frame))
-      ;; vterm requires us to kill the buffer
+      ;; Kill the buffer if the terminal process exited
       (with-current-buffer buffer
-        (when (derived-mode-p 'vterm-mode)
+        (when (or (derived-mode-p 'vterm-mode)
+                  (derived-mode-p 'ghostel-mode)
+                  (derived-mode-p 'eshell-mode))
           (kill-buffer buffer)))
 
       (when (term-mux-session-empty-p session)
         (delete-frame frame)))))
 
 (add-hook 'vterm-exit-functions #'term-mux-frame--exit-fn)
+(add-hook 'ghostel-exit-hook #'term-mux-frame--exit-fn)
 (add-hook 'eshell-exit-hook #'term-mux-frame--exit-fn)
 
 (provide 'term-mux-frame)
