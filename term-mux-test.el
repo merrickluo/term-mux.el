@@ -22,8 +22,17 @@
       (let ((term-mux-session-name nil))
         (should (string= (term-mux--session-name) "test-project"))))
 
-    ;; Test fallback to global when projectile is not available
-    (cl-letf (((symbol-function 'featurep) (lambda (feature) nil)))
+    ;; Test with project.el when projectile is not available
+    (cl-letf (((symbol-function 'featurep) (lambda (feature) nil))
+              ((symbol-function 'project-current) (lambda () (list 'project)))
+              ((symbol-function 'project-root) (lambda (_) "/tmp/test-proj/"))
+              ((symbol-function 'fboundp) (lambda (_) nil)))
+      (let ((term-mux-session-name nil))
+        (should (string= (term-mux--session-name) "test-proj"))))
+
+    ;; Test fallback to global when no project system is available
+    (cl-letf (((symbol-function 'featurep) (lambda (feature) nil))
+              ((symbol-function 'project-current) (lambda () nil)))
       (let ((term-mux-session-name nil))
         (should (string= (term-mux--session-name) "global"))))))
 

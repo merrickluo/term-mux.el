@@ -9,7 +9,7 @@
 ;; Version: 0.0.2
 ;; Keywords: terminals processes
 ;; Homepage: https://github.com/merrickluo/term-mux
-;; Package-Requires: ((emacs "25.1") (projectile "2.0.0"))
+;; Package-Requires: ((emacs "25.1"))
 ;;
 ;; This file is not part of GNU Emacs.
 ;;
@@ -20,9 +20,12 @@
 ;;; Code:
 
 (require 'subr-x)
+(require 'project)
+
+;; Project backend (optional)
+(require 'projectile nil t)
 
 ;; Terminal backends (all optional — at least one is needed)
-(require 'projectile nil t)
 (require 'vterm nil t)
 (require 'ghostel nil t)
 
@@ -112,17 +115,25 @@ Supported options:
 
 (defun term-mux--session-name ()
   (or term-mux-session-name
-      (if (and (featurep 'projectile)
-               (projectile-project-p))
-          (projectile-project-name)
-        "global")))
+      (cond ((and (featurep 'projectile)
+                  (projectile-project-p))
+             (projectile-project-name))
+            ((when-let* ((proj (project-current)))
+               (if (fboundp 'project-name)
+                   (project-name proj)
+                 (file-name-nondirectory
+                  (directory-file-name
+                   (project-root proj))))))
+            (t "global"))))
 
 (defun term-mux--session-root ()
   (or term-mux-session-root
-      (if (and (featurep 'projectile)
-               (projectile-project-p))
-          (projectile-project-root)
-        default-directory)))
+      (cond ((and (featurep 'projectile)
+                  (projectile-project-p))
+             (projectile-project-root))
+            ((when-let* ((proj (project-current)))
+               (project-root proj)))
+            (t default-directory))))
 
 (defun term-mux--new-buffer (session terminal-setup-fn slot)
   (let* ((default-directory (term-mux--session-root))
